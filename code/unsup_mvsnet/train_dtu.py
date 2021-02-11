@@ -28,7 +28,7 @@ tf.app.flags.DEFINE_string('save_dir', '/home/tejas/unsup_mvs/saved_models/lambd
                            """Path to save the model checkpoints.""")
 tf.app.flags.DEFINE_string('save_op_dir', '/home/tejas/unsup_mvs/saved_outputs/lambda1_128_nc3',
                             """Path to dir where outputs are dumped""")
-tf.app.flags.DEFINE_integer('save_op_interval', 1,
+tf.app.flags.DEFINE_integer('save_op_interval', 1000,
                             """Interval to dump out outputs""")
 
 tf.app.flags.DEFINE_boolean('train_dtu', True,
