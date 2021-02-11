@@ -22,7 +22,7 @@ FLAGS = tf.app.flags.FLAGS
 # params for datasets
 tf.app.flags.DEFINE_string('dtu_data_root', '/home/tejas/unsup_mvs/data/mvs_training/dtu/',
                            """Path to dtu dataset.""")
-tf.app.flags.DEFINE_string('log_dir', '/home/tejas/unsup_mvs/logs/lambda1_128_nc3',
+tf.app.flags.DEFINE_string('logs_dir', '/home/tejas/unsup_mvs/logs/lambda1_128_nc3',
                            """Path to store the log.""")
 tf.app.flags.DEFINE_string('save_dir', '/home/tejas/unsup_mvs/saved_models/lambda1_128_nc3',
                            """Path to save the model checkpoints.""")
@@ -350,8 +350,8 @@ class DUMVS():
             # initialization
             total_step = 0
             sess.run(self.init_op) #initialize
-            summary_writer = tf.summary.FileWriter(FLAGS.log_dir, sess.graph)
-            val_summary_path = os.path.join(os.path.dirname(FLAGS.log_dir),(os.path.basename(FLAGS.log_dir)+"_val"))
+            summary_writer = tf.summary.FileWriter(FLAGS.logs_dir, sess.graph)
+            val_summary_path = os.path.join(os.path.dirname(FLAGS.logs_dir),(os.path.basename(FLAGS.logs_dir)+"_val"))
             val_summary_writer = tf.summary.FileWriter(val_summary_path, sess.graph)
 
             # load pre-trained model
