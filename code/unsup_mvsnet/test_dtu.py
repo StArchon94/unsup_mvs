@@ -1,4 +1,10 @@
 from __future__ import print_function
+import multiprocessing
+from model import *
+from preprocess import *
+from tools.common import Notify
+import tensorflow as tf
+import matplotlib.pyplot as plt
 
 import os
 import time
@@ -10,13 +16,8 @@ import numpy as np
 import cv2
 import matplotlib
 matplotlib.use('Agg')
-import matplotlib.pyplot as plt
-import tensorflow as tf
 
 sys.path.append("../")
-from tools.common import Notify
-from preprocess import *
-from model import *
 
 # dataset parameters
 tf.app.flags.DEFINE_string('dense_folder', '/home/tejas/unsup_mvs/data/mvs_testing/dtu',
@@ -38,20 +39,22 @@ tf.app.flags.DEFINE_integer('max_w', 640,
 tf.app.flags.DEFINE_integer('max_h', 512,
                             """Maximum image height when testing.""")
 tf.app.flags.DEFINE_float('sample_scale', 0.25,
-                            """Downsample scale for building cost volume (W and H).""")
+                          """Downsample scale for building cost volume (W and H).""")
 tf.app.flags.DEFINE_float('interval_scale', 0.8,
-                            """Downsample scale for building cost volume (D).""")
+                          """Downsample scale for building cost volume (D).""")
 tf.app.flags.DEFINE_float('base_image_size', 8,
-                            """Base image size""")
+                          """Base image size""")
 tf.app.flags.DEFINE_integer('batch_size', 1,
                             """Testing batch size.""")
 tf.app.flags.DEFINE_bool('adaptive_scaling', True,
-                            """Let image size to fit the network, including 'scaling', 'cropping'""")
+                         """Let image size to fit the network, including 'scaling', 'cropping'""")
 
 FLAGS = tf.app.flags.FLAGS
 
+
 class MVSGenerator:
     """ data generator class, tf only accept generator without param """
+
     def __init__(self, sample_list, view_num):
         self.sample_list = sample_list
         self.view_num = view_num
@@ -78,6 +81,8 @@ class MVSGenerator:
                         cam[1][3][2] = FLAGS.max_d
                     images.append(image)
                     cams.append(cam)
+                gt_depth = load_pfm(open(data[2 * self.view_num]))
+                comb = data[2 * self.view_num + 1]
 
                 if selected_view_num < self.view_num:
                     for view in range(selected_view_num, self.view_num):
@@ -88,7 +93,7 @@ class MVSGenerator:
                         cam = load_cam(cam_file, FLAGS.interval_scale)
                         images.append(image)
                         cams.append(cam)
-                print ('range: ', cams[0][1, 3, 0], cams[0][1, 3, 1], cams[0][1, 3, 2], cams[0][1, 3, 3])
+                # print ('range: ', cams[0][1, 3, 0], cams[0][1, 3, 1], cams[0][1, 3, 2], cams[0][1, 3, 3])
 
                 # determine a proper scale to resize input
                 resize_scale = 1
@@ -130,7 +135,8 @@ class MVSGenerator:
                 croped_images = np.stack(croped_images, axis=0)
                 scaled_cams = np.stack(scaled_cams, axis=0)
                 self.counter += 1
-                yield (scaled_images, centered_images, scaled_cams, image_index)
+                yield (scaled_images, centered_images, scaled_cams, image_index, gt_depth, comb)
+
 
 def mvsnet_pipeline(mvs_list):
 
@@ -143,14 +149,14 @@ def mvsnet_pipeline(mvs_list):
 
     # testing set
     mvs_generator = iter(MVSGenerator(mvs_list, FLAGS.view_num))
-    generator_data_type = (tf.float32, tf.float32, tf.float32, tf.int32)
+    generator_data_type = (tf.float32, tf.float32, tf.float32, tf.int32, tf.float32, tf.int32)
     mvs_set = tf.data.Dataset.from_generator(lambda: mvs_generator, generator_data_type)
     mvs_set = mvs_set.batch(FLAGS.batch_size)
     mvs_set = mvs_set.prefetch(buffer_size=1)
 
     # data from dataset via iterator
     mvs_iterator = mvs_set.make_initializable_iterator()
-    scaled_images, centered_images, scaled_cams, image_index = mvs_iterator.get_next()
+    scaled_images, centered_images, scaled_cams, image_index, gt_depth, comb = mvs_iterator.get_next()
 
     # set shapes
     scaled_images.set_shape(tf.TensorShape([None, FLAGS.view_num, None, None, 3]))
@@ -184,7 +190,6 @@ def mvsnet_pipeline(mvs_list):
         # initialization
         sess.run(var_init_op)
         sess.run(init_op)
-        total_step = 0
 
         # load model
         if FLAGS.model_dir is not None:
@@ -193,16 +198,16 @@ def mvsnet_pipeline(mvs_list):
             restorer.restore(sess, '-'.join([pretrained_model_ckpt_path, str(FLAGS.ckpt_step)]))
             print(Notify.INFO, 'Pre-trained model restored from %s' %
                   ('-'.join([pretrained_model_ckpt_path, str(FLAGS.ckpt_step)])), Notify.ENDC)
-            total_step = FLAGS.ckpt_step
 
         # run inference for each reference view
         sess.run(mvs_iterator.initializer)
+        last_img_id = None
         for step in range(len(mvs_list)):
 
             start_time = time.time()
             try:
-                out_init_depth_map, out_prob_map, out_images, out_cams, out_index = sess.run(
-                    [init_depth_map, prob_map, scaled_images, scaled_cams, image_index])
+                out_init_depth_map, out_prob_map, out_images, out_cams, out_index, out_gt_depth, out_comb = sess.run(
+                    [init_depth_map, prob_map, scaled_images, scaled_cams, image_index, gt_depth, comb])
             except tf.errors.OutOfRangeError:
                 print("all dense finished")  # ==> "End of dataset"
                 break
@@ -218,7 +223,12 @@ def mvsnet_pipeline(mvs_list):
             out_ref_cam = np.squeeze(out_cams)
             out_ref_cam = np.squeeze(out_ref_cam[0, :, :, :])
             out_index = np.squeeze(out_index)
+            out_gt_depth = np.squeeze(out_gt_depth)
+            out_comb = np.squeeze(out_comb)
 
+            err = np.sqrt(np.mean((out_init_depth_image - out_gt_depth) ** 2))
+            if out_index == last_img_id and err >= min_err:
+                continue
             # paths
             init_depth_map_path = output_folder + ('/%08d_init.pfm' % out_index)
             prob_map_path = output_folder + ('/%08d_prob.pfm' % out_index)
@@ -232,23 +242,35 @@ def mvsnet_pipeline(mvs_list):
             image_file = file_io.FileIO(out_ref_image_path, mode='w')
             scipy.misc.imsave(image_file, out_ref_image)
             write_cam(out_ref_cam_path, out_ref_cam)
-            total_step += 1
+
+            min_err = err
+            last_img_id = out_index
+            print(Notify.INFO, 'Updated minimum RMSE for image %d: %.3f. Supporting views are %s' % (out_index, err, out_comb))
+
 
 def get_subdirs(dir):
     "Get a list of immediate subdirectories"
     return next(os.walk(dir))[1]
 
+
 def main(_):  # pylint: disable=unused-argument
     """ program entrance """
+    np.random.seed(100)
     # generate input path list
     scans = get_subdirs(FLAGS.dense_folder)
     base_output_folder = FLAGS.output_folder
     for scan in scans:
         print('scan : ', scan)
-        mvs_list = gen_pipeline_mvs_list(os.path.join(FLAGS.dense_folder, scan))
+        # /home/slin/Documents/datasets/dtu/test/scan1
+        # /home/slin/Documents/datasets/dtu/training/Depths/scan1_train
+        mvs_list = gen_pipeline_mvs_list_all(os.path.join(FLAGS.dense_folder, scan), os.path.join(FLAGS.dense_folder, '../training/Depths', scan + '_train'))
+        # mvs_list = gen_pipeline_mvs_list_rand(os.path.join(FLAGS.dense_folder, scan))
         FLAGS.output_folder = os.path.join(base_output_folder, scan)
         # mvsnet inference
-        mvsnet_pipeline(mvs_list)
+        p = multiprocessing.Process(target=mvsnet_pipeline, args=(mvs_list,))
+        p.start()
+        p.join()
+        break
 
 
 if __name__ == '__main__':
