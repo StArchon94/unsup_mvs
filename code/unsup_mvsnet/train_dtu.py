@@ -499,8 +499,9 @@ class DUMVS():
 
 def main(argv=None):
     """ program entrance """
-    sample_list = gen_dtu_resized_path(FLAGS.dtu_data_root,mode="training")
-    val_sample_list = gen_dtu_resized_path(FLAGS.dtu_data_root,mode="validation")
+    np.random.seed(100)
+    sample_list = gen_dtu_resized_path_rand(FLAGS.dtu_data_root,mode="training")
+    val_sample_list = gen_dtu_resized_path_rand(FLAGS.dtu_data_root,mode="validation")
 
     # Shuffle
     random.seed(100)
