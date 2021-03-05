@@ -18,12 +18,14 @@ from tensorflow.python.lib.io import file_io
 import itertools
 FLAGS = tf.app.flags.FLAGS
 
+
 def center_image(img):
     """ normalize image input """
     img = img.astype(np.float32)
-    var = np.var(img, axis=(0,1), keepdims=True)
-    mean = np.mean(img, axis=(0,1), keepdims=True)
+    var = np.var(img, axis=(0, 1), keepdims=True)
+    mean = np.mean(img, axis=(0, 1), keepdims=True)
     return (img - mean) / (np.sqrt(var) + 0.00000001)
+
 
 def scale_camera(cam, scale=1):
     """ resize input in order to produce sampled depth map """
@@ -36,11 +38,13 @@ def scale_camera(cam, scale=1):
     new_cam[1][1][2] = cam[1][1][2] * scale
     return new_cam
 
+
 def scale_mvs_camera(cams, scale=1):
     """ resize input in order to produce sampled depth map """
     for view in range(FLAGS.view_num):
         cams[view] = scale_camera(cams[view], scale=scale)
     return cams
+
 
 def scale_image(image, scale=1, interpolation='linear'):
     """ resize image using cv2 """
@@ -48,6 +52,7 @@ def scale_image(image, scale=1, interpolation='linear'):
         return cv2.resize(image, None, fx=scale, fy=scale, interpolation=cv2.INTER_LINEAR)
     if interpolation == 'nearest':
         return cv2.resize(image, None, fx=scale, fy=scale, interpolation=cv2.INTER_NEAREST)
+
 
 def scale_mvs_input(images, cams, depth_image=None, scale=1):
     """ resize input to fit into the memory """
@@ -60,6 +65,7 @@ def scale_mvs_input(images, cams, depth_image=None, scale=1):
     else:
         depth_image = scale_image(depth_image, scale=scale, interpolation='nearest')
         return images, cams, depth_image
+
 
 def crop_mvs_input(images, cams, depth_image=None):
     """ resize images and cameras to fit the network (can be divided by base image size) """
@@ -92,12 +98,14 @@ def crop_mvs_input(images, cams, depth_image=None):
     else:
         return images, cams
 
+
 def mask_depth_image(depth_image, min_depth, max_depth):
     """ mask out-of-range pixel to zero """
     ret, depth_image = cv2.threshold(depth_image, min_depth, 100000, cv2.THRESH_TOZERO)
     ret, depth_image = cv2.threshold(depth_image, max_depth, 100000, cv2.THRESH_TOZERO_INV)
     depth_image = np.expand_dims(depth_image, 2)
     return depth_image
+
 
 def load_cam(file, interval_scale=1):
     """ read camera txt file """
@@ -138,6 +146,7 @@ def load_cam(file, interval_scale=1):
 
     return cam
 
+
 def write_cam(file, cam):
     f = file_io.FileIO(file, "w")
 
@@ -157,6 +166,7 @@ def write_cam(file, cam):
     f.write('\n' + str(cam[1][3][0]) + ' ' + str(cam[1][3][1]) + '\n')
 
     f.close()
+
 
 def load_pfm(file):
     color = None
@@ -178,16 +188,17 @@ def load_pfm(file):
     else:
         raise Exception('Malformed PFM header.')
     scale = float((file.readline()).rstrip())
-    if scale < 0: # little-endian
+    if scale < 0:  # little-endian
         data_type = '<f'
     else:
-        data_type = '>f' # big-endian
+        data_type = '>f'  # big-endian
     data_string = file.read()
     data = np.fromstring(data_string, data_type)
     shape = (height, width, 3) if color else (height, width)
     data = np.reshape(data, shape)
     data = cv2.flip(data, 0)
     return data
+
 
 def write_pfm(file, image, scale=1):
     file = file_io.FileIO(file, mode='wb')
@@ -198,9 +209,9 @@ def write_pfm(file, image, scale=1):
 
     image = np.flipud(image)
 
-    if len(image.shape) == 3 and image.shape[2] == 3: # color image
+    if len(image.shape) == 3 and image.shape[2] == 3:  # color image
         color = True
-    elif len(image.shape) == 2 or len(image.shape) == 3 and image.shape[2] == 1: # greyscale
+    elif len(image.shape) == 2 or len(image.shape) == 3 and image.shape[2] == 1:  # greyscale
         color = False
     else:
         raise Exception('Image must have H x W x 3, H x W x 1 or H x W dimensions.')
@@ -219,6 +230,7 @@ def write_pfm(file, image, scale=1):
     file.write(image_string)
 
     file.close()
+
 
 def gen_dtu_resized_path(dtu_data_folder, mode='training'):
     """ generate data paths for dtu dataset """
@@ -247,7 +259,7 @@ def gen_dtu_resized_path(dtu_data_folder, mode='training'):
     elif mode == 'validation':
         data_set = validation_set
     elif mode == 'evaluation':
-        data_set= evaluation_set
+        data_set = evaluation_set
 
     # for each dataset
     for i in data_set:
@@ -332,6 +344,7 @@ def gen_dtu_resized_path(dtu_data_folder, mode='training'):
                     sample_list.append(paths)
 
     return sample_list
+
 
 def gen_dtu_resized_path_rand(dtu_data_folder, mode='training'):
     """ generate data paths for dtu dataset """
@@ -361,7 +374,7 @@ def gen_dtu_resized_path_rand(dtu_data_folder, mode='training'):
     elif mode == 'validation':
         data_set = validation_set
     elif mode == 'evaluation':
-        data_set= evaluation_set
+        data_set = evaluation_set
 
     # for each dataset
     for i in data_set:
@@ -384,7 +397,7 @@ def gen_dtu_resized_path_rand(dtu_data_folder, mode='training'):
                     paths.append(ref_cam_path)
                     # view images
                     views = np.random.choice(n_views - 1, size=FLAGS.view_num - 1, replace=False)
-                    views[views>=p] += 1
+                    views[views >= p] += 1
                     for view_index in views:
                         view_image_path = os.path.join(
                             image_folder, ('rect_%03d_%d_r5000.png' % ((view_index + 1), j)))
@@ -408,7 +421,7 @@ def gen_dtu_resized_path_rand(dtu_data_folder, mode='training'):
                 paths.append(ref_cam_path)
                 # view images
                 views = np.random.choice(n_views - 1, size=FLAGS.view_num - 1, replace=False)
-                views[views>=p] += 1
+                views[views >= p] += 1
                 for view_index in views:
                     view_image_path = os.path.join(
                         image_folder, ('rect_%03d_%d_r5000.png' % ((view_index + 1), j)))
@@ -433,7 +446,7 @@ def gen_dtu_resized_path_rand(dtu_data_folder, mode='training'):
                     paths.append(ref_cam_path)
                     # view images
                     views = np.random.choice(n_views - 1, size=FLAGS.view_num - 1, replace=False)
-                    views[views>=p] += 1
+                    views[views >= p] += 1
                     for view_index in views:
                         view_image_path = os.path.join(
                             image_folder, ('rect_%03d_%d_r5000.png' % ((view_index + 1), j)))
@@ -446,6 +459,7 @@ def gen_dtu_resized_path_rand(dtu_data_folder, mode='training'):
                     sample_list.append(paths)
 
     return sample_list
+
 
 def gen_dtu_resized_jumbled_path(dtu_data_folder):
     """ generate data paths for dtu dataset """
@@ -470,10 +484,10 @@ def gen_dtu_resized_jumbled_path(dtu_data_folder):
         for j in range(0, 7):
             # for each reference image
             for p in range(0, int(cluster_list[0])):
-                if (p%2 == 0) and (j<6):
-                    light_idx = j+1
-                elif (p%2 == 0) and (j==6):
-                    light_idx = j-2
+                if (p % 2 == 0) and (j < 6):
+                    light_idx = j + 1
+                elif (p % 2 == 0) and (j == 6):
+                    light_idx = j - 2
                 else:
                     light_idx = j
                 paths = []
@@ -487,7 +501,7 @@ def gen_dtu_resized_jumbled_path(dtu_data_folder):
                 # view images
                 for view in range(FLAGS.view_num - 1):
                     view_index = int(cluster_list[22 * p + 2 * view + 3])
-                    light_idx = random.randint(0,6)
+                    light_idx = random.randint(0, 6)
                     view_image_path = os.path.join(
                         image_folder, ('rect_%03d_%d_r5000.png' % ((view_index + 1), light_idx)))
                     view_cam_path = os.path.join(cam_folder, ('%08d_cam.txt' % view_index))
@@ -499,6 +513,7 @@ def gen_dtu_resized_jumbled_path(dtu_data_folder):
                 # pdb.set_trace()
                 sample_list.append(paths)
     return sample_list
+
 
 def gen_dtu_mvs_path(dtu_data_folder, mode='training'):
     """ generate data paths for dtu dataset """
@@ -586,15 +601,17 @@ def gen_dtu_mvs_path(dtu_data_folder, mode='training'):
 
     return sample_list
 
+
 def gen_dumvs_list(dtu_data_folder):
 
     dirs = os.listdir(dtu_data_folder)
 
     sample_list = []
     for dr in dirs:
-        sample_list += gen_pipeline_mvs_list(os.path.join(dtu_data_folder,dr))
+        sample_list += gen_pipeline_mvs_list(os.path.join(dtu_data_folder, dr))
 
     return sample_list
+
 
 def gen_mvs_list(mode='training'):
     """output paths in a list: [[I1_path1,  C1_path, I2_path, C2_path, ...(, D1_path)], [...], ...]"""
@@ -604,111 +621,75 @@ def gen_mvs_list(mode='training'):
         sample_list = sample_list + dtu_sample_list
     return sample_list
 
+
 # for testing
-def gen_pipeline_mvs_list(dense_folder):
+def gen_pipeline_mvs_list(scan_dir, mode):
     """ mvs input path list """
-    image_folder = os.path.join(dense_folder, 'images')
-    cam_folder = os.path.join(dense_folder, 'cams')
-    cluster_list_path = os.path.join(dense_folder, 'pair.txt')
-    cluster_list = open(cluster_list_path).read().split()
+    def compute_nn_views(ref_id, cam_dir, n_total_views):
+        ref_cam_path = os.path.join(cam_dir, ('%08d_cam.txt' % ref_id))
+        ref_cam_data = open(ref_cam_path).read().split()
+        ref_cam_pos = np.array([ref_cam_data[4 * (i + 1)] for i in range(3)], dtype=float)
+        diffs = []
+        for i_view in range(n_total_views):
+            if i_view == ref_id:
+                continue
+            cam_path = os.path.join(cam_dir, ('%08d_cam.txt' % i_view))
+            cam_data = open(cam_path).read().split()
+            cam_pos = np.array([cam_data[4 * (i + 1)] for i in range(3)], dtype=float)
+            diffs.append(np.linalg.norm(ref_cam_pos - cam_pos))
+        return np.argsort(diffs)
+
+    img_dir = os.path.join(scan_dir, 'images')
+    cam_dir = os.path.join(scan_dir, 'cams')
+    cam_list_path = os.path.join(scan_dir, 'pair.txt')
+    cam_list_data = open(cam_list_path).read().split()
 
     # for each dataset
     mvs_list = []
+    n_total_views = int(cam_list_data[0])
     pos = 1
-    for i in range(int(cluster_list[0])):
-        paths = []
+    for _ in range(n_total_views):
         # ref image
-        ref_index = int(cluster_list[pos])
+        ref_id = int(cam_list_data[pos])
         pos += 1
-        ref_image_path = os.path.join(image_folder, ('%08d.jpg' % ref_index))
-        ref_cam_path = os.path.join(cam_folder, ('%08d_cam.txt' % ref_index))
-        paths.append(ref_image_path)
-        paths.append(ref_cam_path)
+        ref_img_path = os.path.join(img_dir, ('%08d.jpg' % ref_id))
+        ref_cam_path = os.path.join(cam_dir, ('%08d_cam.txt' % ref_id))
         # view images
-        all_view_num = int(cluster_list[pos])
+        n_top_views = int(cam_list_data[pos])
         pos += 1
-        check_view_num = min(FLAGS.view_num - 1, all_view_num)
-        for view in range(check_view_num):
-            view_index = int(cluster_list[pos + 2 * view])
-            view_image_path = os.path.join(image_folder, ('%08d.jpg' % view_index))
-            view_cam_path = os.path.join(cam_folder, ('%08d_cam.txt' % view_index))
-            paths.append(view_image_path)
-            paths.append(view_cam_path)
-        pos += 2 * all_view_num
-        # depth path
-        mvs_list.append(paths)
-    return mvs_list
-
-def gen_pipeline_mvs_list_rand(dense_folder):
-    """ mvs input path list """
-    image_folder = os.path.join(dense_folder, 'images')
-    cam_folder = os.path.join(dense_folder, 'cams')
-    cluster_list_path = os.path.join(dense_folder, 'pair.txt')
-    cluster_list = open(cluster_list_path).read().split()
-
-    # for each dataset
-    mvs_list = []
-    n_views = int(cluster_list[0])
-    check_view_num = min(FLAGS.view_num, n_views) - 1
-    for i in range(n_views):
-        paths = []
-        # ref image
-        ref_image_path = os.path.join(image_folder, ('%08d.jpg' % i))
-        ref_cam_path = os.path.join(cam_folder, ('%08d_cam.txt' % i))
-        paths.append(ref_image_path)
-        paths.append(ref_cam_path)
-        # view images
-        views = np.random.choice(n_views - 1, size=check_view_num, replace=False)
-        views[views>=i] += 1
-        for view_index in views:
-            view_image_path = os.path.join(image_folder, ('%08d.jpg' % view_index))
-            view_cam_path = os.path.join(cam_folder, ('%08d_cam.txt' % view_index))
-            paths.append(view_image_path)
-            paths.append(view_cam_path)
-        # depth path
-        mvs_list.append(paths)
-    return mvs_list
-
-def gen_pipeline_mvs_list_all(dense_folder, depth_folder):
-    """ mvs input path list """
-    image_folder = os.path.join(dense_folder, 'images')
-    cam_folder = os.path.join(dense_folder, 'cams')
-    cluster_list_path = os.path.join(dense_folder, 'pair.txt')
-    cluster_list = open(cluster_list_path).read().split()
-
-    # for each dataset
-    mvs_list = []
-    pos = 1
-    for i in range(int(cluster_list[0])):
-        # ref image
-        ref_index = int(cluster_list[pos])
-        pos += 1
-        ref_image_path = os.path.join(image_folder, ('%08d.jpg' % ref_index))
-        ref_cam_path = os.path.join(cam_folder, ('%08d_cam.txt' % ref_index))
-        # view images
-        all_view_num = int(cluster_list[pos])
-        pos += 1
-        # view_indices = [int(cluster_list[pos + 2 * view]) for view in range(all_view_num)]
-        view_indices = [int(cluster_list[pos + 2 * view]) for view in range(8)]
-        check_view_num = min(FLAGS.view_num - 1, all_view_num)
-        for comb in itertools.combinations(view_indices, check_view_num):
+        n_views = min(FLAGS.view_num - 1, n_top_views)
+        if mode is None:
+            view_ids = [int(cam_list_data[pos + 2 * i_view]) for i_view in range(n_views)]
+        elif mode == 'bf':
+            view_ids = [int(cam_list_data[pos + 2 * i_view]) for i_view in range(8)]
+        elif mode == 'rnd':
+            view_ids = np.random.choice(n_total_views - 1, size=n_views, replace=False)
+            view_ids[view_ids >= ref_id] += 1
+        elif mode == 'nn':
+            view_ids = compute_nn_views(ref_id, cam_dir, n_top_views)[:n_views]
+            view_ids[view_ids >= ref_id] += 1
+        for view_comb in itertools.combinations(view_ids, n_views):
             paths = []
-            paths.append(ref_image_path)
+            paths.append(ref_img_path)
             paths.append(ref_cam_path)
-            for view_index in comb:
-                view_image_path = os.path.join(image_folder, ('%08d.jpg' % view_index))
-                view_cam_path = os.path.join(cam_folder, ('%08d_cam.txt' % view_index))
-                paths.append(view_image_path)
+            for view_id in view_comb:
+                view_img_path = os.path.join(img_dir, ('%08d.jpg' % view_id))
+                view_cam_path = os.path.join(cam_dir, ('%08d_cam.txt' % view_id))
+                paths.append(view_img_path)
                 paths.append(view_cam_path)
-            depth_image_path = os.path.join(depth_folder, ('depth_map_%04d.pfm' % ref_index))
-            paths.append(depth_image_path)
-            paths.append(comb)
+            if mode == 'bf':
+                scan = os.path.basename(scan_dir)
+                depth_dir = os.path.join(scan_dir, '../training/Depths', scan + '_train')
+                depth_img_path = os.path.join(depth_dir, ('depth_map_%04d.pfm' % ref_id))
+                paths.append(depth_img_path)
+                paths.append(view_comb)
             mvs_list.append(paths)
-        pos += 2 * all_view_num
+        pos += 2 * n_top_views
         # depth path
     return mvs_list
 
-def gen_dtu_eval_list(dtu_rectified_dir, cams_info_dir,scan, light):
+
+def gen_dtu_eval_list(dtu_rectified_dir, cams_info_dir, scan, light):
     """ mvs input path list """
 
     image_folder = os.path.join(dtu_rectified_dir, 'scan' + str(scan))
@@ -719,7 +700,7 @@ def gen_dtu_eval_list(dtu_rectified_dir, cams_info_dir,scan, light):
     # for each dataset
     mvs_list = []
     pos = 1
-    j=light
+    j = light
     for i in range(int(cluster_list[0])):
         paths = []
         # ref image
