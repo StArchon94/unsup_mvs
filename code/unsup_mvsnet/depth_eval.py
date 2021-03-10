@@ -8,9 +8,10 @@ def compute_errors(gt, pred):
     """Computation of error metrics between predicted and ground truth depths
     """
     thresh = np.maximum((gt / pred), (pred / gt))
-    a1 = (thresh < 1.25).mean()
-    a2 = (thresh < 1.25 ** 2).mean()
-    a3 = (thresh < 1.25 ** 3).mean()
+    delta = 1.1
+    a1 = (thresh < delta).mean()
+    a2 = (thresh < delta ** 2).mean()
+    a3 = (thresh < delta ** 3).mean()
 
     rmse = (gt - pred) ** 2
     rmse = np.sqrt(rmse.mean())
@@ -27,7 +28,7 @@ def compute_errors(gt, pred):
 
 if __name__ == '__main__':
     exp_name = 'exp1'
-    iter_no = '50000'
+    iter_no = '50000_nn'
     pred_dir = os.path.join('/home/slin/Documents/outputs/mvs', exp_name, 'tests', iter_no)
     gt_dir = '/home/slin/Documents/datasets/dtu/training/Depths/'
 
@@ -40,7 +41,7 @@ if __name__ == '__main__':
         ratios = []
 
     for scan in os.listdir(pred_dir):
-        if scan!='scan10':
+        if scan != 'scan10':
             continue
         pred_depth_dir = os.path.join(pred_dir, scan, 'depths_mvsnet')
         gt_depth_dir = os.path.join(gt_dir, scan + '_train')
@@ -55,9 +56,9 @@ if __name__ == '__main__':
             gt_depth_filename = 'depth_map_' + pred_depth_filename[4:8] + '.pfm'
             gt_depth = load_pfm(open(os.path.join(gt_depth_dir, gt_depth_filename)))
 
-            mask = gt_depth > 0
-            pred_depth = pred_depth[np.logical_and(mask, pred_prob>0.8)]
-            gt_depth = gt_depth[np.logical_and(mask, pred_prob>0.8)]
+            mask = np.logical_and(gt_depth > 0, pred_prob > 0.8)
+            pred_depth = pred_depth[mask]
+            gt_depth = gt_depth[mask]
             if enable_median_scaling:
                 ratio = np.median(gt_depth) / np.median(pred_depth)
                 ratios.append(ratio)
