@@ -69,31 +69,30 @@ class MVSGenerator:
                 # read input data
                 images = []
                 cams = []
-                image_index = int(os.path.splitext(os.path.basename(data[0]))[0])
-                selected_view_num = int(len(data) / 2)
+                image_index = int(os.path.splitext(os.path.basename(data[1]))[0])
+                selected_view_num = int(len(data) // 2)
                 if self.mode == 'bf':
                     selected_view_num -= 1
 
+                view_comb = data[0]
                 for view in range(min(self.view_num, selected_view_num)):
-                    image_file = file_io.FileIO(data[2 * view], mode='r')
+                    image_file = file_io.FileIO(data[2 * view + 1], mode='r')
                     image = scipy.misc.imread(image_file, mode='RGB')
                     image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
-                    cam_file = file_io.FileIO(data[2 * view + 1], mode='r')
+                    cam_file = file_io.FileIO(data[2 * view + 2], mode='r')
                     cam = load_cam(cam_file, FLAGS.interval_scale)
                     if cam[1][3][2] == 0:
                         cam[1][3][2] = FLAGS.max_d
                     images.append(image)
                     cams.append(cam)
                 if self.mode == 'bf':
-                    gt_depth = load_pfm(open(data[2 * selected_view_num]))
-                    view_comb = data[2 * selected_view_num + 1]
-
+                    gt_depth = load_pfm(open(data[2 * selected_view_num + 1]))
                 if selected_view_num < self.view_num:
                     for view in range(selected_view_num, self.view_num):
-                        image_file = file_io.FileIO(data[0], mode='r')
+                        image_file = file_io.FileIO(data[1], mode='r')
                         image = scipy.misc.imread(image_file, mode='RGB')
                         image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
-                        cam_file = file_io.FileIO(data[1], mode='r')
+                        cam_file = file_io.FileIO(data[2], mode='r')
                         cam = load_cam(cam_file, FLAGS.interval_scale)
                         images.append(image)
                         cams.append(cam)
@@ -139,10 +138,10 @@ class MVSGenerator:
                 croped_images = np.stack(croped_images, axis=0)
                 scaled_cams = np.stack(scaled_cams, axis=0)
                 self.counter += 1
+                retval = (scaled_images, centered_images, scaled_cams, image_index, view_comb)
                 if self.mode == 'bf':
-                    yield (scaled_images, centered_images, scaled_cams, image_index, gt_depth, view_comb)
-                else:
-                    yield (scaled_images, centered_images, scaled_cams, image_index)
+                    retval += (gt_depth,)
+                yield retval
 
 
 def mvsnet_pipeline(mvs_list, mode):
@@ -156,9 +155,9 @@ def mvsnet_pipeline(mvs_list, mode):
 
     # testing set
     mvs_generator = iter(MVSGenerator(mvs_list, FLAGS.view_num, mode))
-    generator_data_type = (tf.float32, tf.float32, tf.float32, tf.int32)
+    generator_data_type = (tf.float32, tf.float32, tf.float32, tf.int32, tf.int32)
     if mode == 'bf':
-        generator_data_type += (tf.float32, tf.int32)
+        generator_data_type += (tf.float32,)
     mvs_set = tf.data.Dataset.from_generator(lambda: mvs_generator, generator_data_type)
     mvs_set = mvs_set.batch(FLAGS.batch_size)
     mvs_set = mvs_set.prefetch(buffer_size=1)
@@ -166,9 +165,9 @@ def mvsnet_pipeline(mvs_list, mode):
     # data from dataset via iterator
     mvs_iterator = mvs_set.make_initializable_iterator()
     if mode == 'bf':
-        scaled_images, centered_images, scaled_cams, image_index, gt_depth, view_comb = mvs_iterator.get_next()
+        scaled_images, centered_images, scaled_cams, image_index, view_comb, gt_depth = mvs_iterator.get_next()
     else:
-        scaled_images, centered_images, scaled_cams, image_index = mvs_iterator.get_next()
+        scaled_images, centered_images, scaled_cams, image_index, view_comb = mvs_iterator.get_next()
     # set shapes
     scaled_images.set_shape(tf.TensorShape([None, FLAGS.view_num, None, None, 3]))
     centered_images.set_shape(tf.TensorShape([None, FLAGS.view_num, None, None, 3]))
@@ -215,15 +214,12 @@ def mvsnet_pipeline(mvs_list, mode):
         if mode == 'bf':
             last_img_id = None
         for step in range(len(mvs_list)):
-
             start_time = time.time()
             try:
                 if mode == 'bf':
-                    out_init_depth_map, out_prob_map, out_images, out_cams, out_index, out_gt_depth, out_view_comb = sess.run(
-                        [init_depth_map, prob_map, scaled_images, scaled_cams, image_index, gt_depth, view_comb])
+                    out_init_depth_map, out_prob_map, out_images, out_cams, out_index, out_view_comb, out_gt_depth = sess.run([init_depth_map, prob_map, scaled_images, scaled_cams, image_index, view_comb, gt_depth])
                 else:
-                    out_init_depth_map, out_prob_map, out_images, out_cams, out_index = sess.run(
-                        [init_depth_map, prob_map, scaled_images, scaled_cams, image_index])
+                    out_init_depth_map, out_prob_map, out_images, out_cams, out_index, out_view_comb = sess.run([init_depth_map, prob_map, scaled_images, scaled_cams, image_index, view_comb])
             except tf.errors.OutOfRangeError:
                 print("all dense finished")  # ==> "End of dataset"
                 break
@@ -239,17 +235,21 @@ def mvsnet_pipeline(mvs_list, mode):
             out_ref_cam = np.squeeze(out_cams)
             out_ref_cam = np.squeeze(out_ref_cam[0, :, :, :])
             out_index = np.squeeze(out_index)
+            out_view_comb = np.squeeze(out_view_comb)
             if mode == 'bf':
                 out_gt_depth = np.squeeze(out_gt_depth)
-                err = np.sqrt(np.mean((out_init_depth_image - out_gt_depth) ** 2))
+                err = np.sqrt(np.mean((out_init_depth_image - out_gt_depth)[out_gt_depth > 0] ** 2))
                 if out_index == last_img_id and err >= min_err:
                     continue
-                out_view_comb = np.squeeze(out_view_comb)
+                min_err = err
+                last_img_id = out_index
+                print(Notify.INFO, 'Updated minimum RMSE for image %d: %.3f. Supporting views are %s' % (out_index, err, out_view_comb))
             # paths
             init_depth_map_path = output_folder + ('/%08d_init.pfm' % out_index)
             prob_map_path = output_folder + ('/%08d_prob.pfm' % out_index)
             out_ref_image_path = output_folder + ('/%08d.jpg' % out_index)
             out_ref_cam_path = output_folder + ('/%08d.txt' % out_index)
+            view_comb_path = output_folder + ('/%08d_view_comb.npy' % out_index)
 
             # save output
             write_pfm(init_depth_map_path, out_init_depth_image)
@@ -258,11 +258,7 @@ def mvsnet_pipeline(mvs_list, mode):
             image_file = file_io.FileIO(out_ref_image_path, mode='w')
             scipy.misc.imsave(image_file, out_ref_image)
             write_cam(out_ref_cam_path, out_ref_cam)
-
-            if mode == 'bf':
-                min_err = err
-                last_img_id = out_index
-                print(Notify.INFO, 'Updated minimum RMSE for image %d: %.3f. Supporting views are %s' % (out_index, err, out_view_comb))
+            np.save(view_comb_path, out_view_comb)
 
 
 def get_subdirs(dir):
@@ -272,7 +268,7 @@ def get_subdirs(dir):
 
 def main(_):  # pylint: disable=unused-argument
     """ program entrance """
-    mode = 'nn'
+    mode = 'bf'
     if mode == 'rnd':
         np.random.seed(100)
     # generate input path list
