@@ -50,41 +50,50 @@ def cameras_lineset(Rs, ts, size=10, color=(0.5, 0.5, 0), connect_cams=False):
 
 if __name__ == '__main__':
     scan = 'scan10'
-    ref_no = 14
-    selected = set([13, 24, 9, 25])
-    best = set([13, 9, 15, 8])
-    other = set(range(49)) - {ref_no} - selected - best
-    common = selected & best
-    selected -= common
-    best -= common
+    ref_no = 24
+    default = set(np.load(f'/home/slin/Documents/outputs/mvs/exp1/tests/50000/{scan}/depths_mvsnet/{ref_no:08d}_view_comb.npy'))
+    # comp = set(np.load(f'/home/slin/Documents/outputs/mvs/exp1/tests/50000_nn/{scan}/depths_mvsnet/{ref_no:08d}_view_comb.npy'))
+    comp = set(np.load(f'/home/slin/Documents/outputs/mvs/exp1/tests/50000_all/{scan}/depths_mvsnet/{ref_no:08d}_view_comb.npy'))
+    other = set(range(49)) - {ref_no} - default - comp
+    common = default & comp
+    default -= common
+    comp -= common
     cam_dir = f'/home/slin/Documents/datasets/dtu/test/{scan}/cams/'
     cam_size = 16
 
     ref_cam_pose = load_cam_ext(open(cam_dir + f'{ref_no:08d}_cam.txt'))
     ref_cam_ls = cameras_lineset(ref_cam_pose[None, :, :3], ref_cam_pose[None, :, 3], cam_size, (1, 0, 0))
+    ls_list = [ref_cam_ls]
 
-    common_cam_poses = []
-    for common_no in common:
-        common_cam_poses.append(load_cam_ext(open(cam_dir + f'{common_no:08d}_cam.txt')))
-    common_cam_poses = np.stack(common_cam_poses)
-    common_cam_ls = cameras_lineset(common_cam_poses[..., :3], common_cam_poses[..., 3], cam_size, (1, 0.5, 0))
+    if common:
+        common_cam_poses = []
+        for common_no in common:
+            common_cam_poses.append(load_cam_ext(open(cam_dir + f'{common_no:08d}_cam.txt')))
+        common_cam_poses = np.stack(common_cam_poses)
+        common_cam_ls = cameras_lineset(common_cam_poses[..., :3], common_cam_poses[..., 3], cam_size, (1, 0.5, 0))
+        ls_list.append(common_cam_ls)
 
-    selected_cam_poses = []
-    for selected_no in selected:
-        selected_cam_poses.append(load_cam_ext(open(cam_dir + f'{selected_no:08d}_cam.txt')))
-    selected_cam_poses = np.stack(selected_cam_poses)
-    selected_cam_ls = cameras_lineset(selected_cam_poses[..., :3], selected_cam_poses[..., 3], cam_size, (0, 0, 1))
+    if default:
+        default_cam_poses = []
+        for default_no in default:
+            default_cam_poses.append(load_cam_ext(open(cam_dir + f'{default_no:08d}_cam.txt')))
+        default_cam_poses = np.stack(default_cam_poses)
+        default_cam_ls = cameras_lineset(default_cam_poses[..., :3], default_cam_poses[..., 3], cam_size, (0, 0, 1))
+        ls_list.append(default_cam_ls)
 
-    best_cam_poses = []
-    for best_no in best:
-        best_cam_poses.append(load_cam_ext(open(cam_dir + f'{best_no:08d}_cam.txt')))
-    best_cam_poses = np.stack(best_cam_poses)
-    best_cam_ls = cameras_lineset(best_cam_poses[..., :3], best_cam_poses[..., 3], cam_size, (0, 1, 0))
+    if comp:
+        comp_cam_poses = []
+        for comp_no in comp:
+            comp_cam_poses.append(load_cam_ext(open(cam_dir + f'{comp_no:08d}_cam.txt')))
+        comp_cam_poses = np.stack(comp_cam_poses)
+        comp_cam_ls = cameras_lineset(comp_cam_poses[..., :3], comp_cam_poses[..., 3], cam_size, (0, 1, 0))
+        ls_list.append(comp_cam_ls)
 
     other_cam_poses = []
     for other_no in other:
         other_cam_poses.append(load_cam_ext(open(cam_dir + f'{other_no:08d}_cam.txt')))
     other_cam_poses = np.stack(other_cam_poses)
     other_cam_ls = cameras_lineset(other_cam_poses[..., :3], other_cam_poses[..., 3], cam_size, (0, 0, 0))
+    ls_list.append(other_cam_ls)
 
-    o3d.visualization.draw_geometries([ref_cam_ls, common_cam_ls, selected_cam_ls, best_cam_ls, other_cam_ls])
+    o3d.visualization.draw_geometries(ls_list)
