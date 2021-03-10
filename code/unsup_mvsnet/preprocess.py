@@ -626,17 +626,23 @@ def gen_mvs_list(mode='training'):
 def gen_pipeline_mvs_list(scan_dir, mode):
     """ mvs input path list """
     def compute_nn_views(ref_id, cam_dir, n_total_views):
+        def compute_center(pose):
+            R = pose[:, :3]
+            t = pose[:, 3]
+            return -np.matmul(R.T, t)
         ref_cam_path = os.path.join(cam_dir, ('%08d_cam.txt' % ref_id))
         ref_cam_data = open(ref_cam_path).read().split()
-        ref_cam_pos = np.array([ref_cam_data[4 * (i + 1)] for i in range(3)], dtype=float)
+        ref_cam_pose = np.array([ref_cam_data[i] for i in range(1, 13)], dtype=float).reshape(3, 4)
+        ref_cam_center = compute_center(ref_cam_pose)
         diffs = []
         for i_view in range(n_total_views):
             if i_view == ref_id:
                 continue
             cam_path = os.path.join(cam_dir, ('%08d_cam.txt' % i_view))
             cam_data = open(cam_path).read().split()
-            cam_pos = np.array([cam_data[4 * (i + 1)] for i in range(3)], dtype=float)
-            diffs.append(np.linalg.norm(ref_cam_pos - cam_pos))
+            cam_pose = np.array([cam_data[i] for i in range(1, 13)], dtype=float).reshape(3, 4)
+            cam_center = compute_center(cam_pose)
+            diffs.append(np.linalg.norm(ref_cam_center - cam_center))
         return np.argsort(diffs)
 
     img_dir = os.path.join(scan_dir, 'images')
@@ -666,10 +672,11 @@ def gen_pipeline_mvs_list(scan_dir, mode):
             view_ids = np.random.choice(n_total_views - 1, size=n_views, replace=False)
             view_ids[view_ids >= ref_id] += 1
         elif mode == 'nn':
-            view_ids = compute_nn_views(ref_id, cam_dir, n_top_views)[:n_views]
+            view_ids = compute_nn_views(ref_id, cam_dir, n_total_views)[:n_views]
             view_ids[view_ids >= ref_id] += 1
         for view_comb in itertools.combinations(view_ids, n_views):
             paths = []
+            paths.append(view_comb)
             paths.append(ref_img_path)
             paths.append(ref_cam_path)
             for view_id in view_comb:
@@ -679,13 +686,11 @@ def gen_pipeline_mvs_list(scan_dir, mode):
                 paths.append(view_cam_path)
             if mode == 'bf':
                 scan = os.path.basename(scan_dir)
-                depth_dir = os.path.join(scan_dir, '../training/Depths', scan + '_train')
+                depth_dir = os.path.join(scan_dir, '../../training/Depths', scan + '_train')
                 depth_img_path = os.path.join(depth_dir, ('depth_map_%04d.pfm' % ref_id))
                 paths.append(depth_img_path)
-                paths.append(view_comb)
             mvs_list.append(paths)
         pos += 2 * n_top_views
-        # depth path
     return mvs_list
 
 
